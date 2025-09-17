@@ -1,4 +1,4 @@
-﻿﻿<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8" />
@@ -75,6 +75,7 @@
     <button id="toggleMode">Mode feu rouge</button>
     <button id="toggleFilter">Filtrer ≥ 80%</button>
     <button id="notifBtn">Activer notifications</button>
+    <button id="backtestBtn">Lancer Backtest</button>
     <span id="autoInfo" class="ts">Auto: 60s</span>
     <span id="statusInfo" class="ts">Chargement des symboles...</span>
     <button id="downloadBtn" class="download">Télécharger la page</button>
@@ -136,7 +137,11 @@
       <button id="clearHistory" class="btn-small btn-neutral">Effacer historique</button>
       <div class="small-muted" id="histCount">Entrées: 0</div>
     </div>
-    <table style="margin-top:8px">
+    <div id="progressContainer" style="margin-top:8px; background:#eee; border-radius:8px; height:20px; width:100%; display:none;">
+  <div id="progressBar" style="background:#4caf50; height:100%; width:0%; border-radius:8px;"></div>
+</div>
+<div id="progressText" class="small-muted" style="margin-top:4px"></div>
+<table style="margin-top:8px">
       <thead>
         <tr>
           <th>Actif</th><th>Intervalle</th><th>Signal</th><th>Fiabilité</th><th>Entrée</th><th>Sortie</th><th>Δ %</th><th>Verdict</th><th>Indicateurs</th><th>Horodatage</th>
@@ -144,9 +149,53 @@
       </thead>
       <tbody id="historyRows"></tbody>
     </table>
+    <div class="history-pagination" style="margin-top:8px; display:flex; gap:8px; align-items:center">
+      <button id="histPrevBtn" class="btn-small btn-neutral">Précédent</button>
+      <span id="pageInfo" class="small-muted">Page 1</span>
+      <button id="histNextBtn" class="btn-small btn-neutral">Suivant</button>
+    </div>
   </div>
 
+  
   <div class="card">
+    <div class="ts">Résultats Backtest (accéléré)</div>
+    <div id="backtestStats" class="small-muted">Aucun test lancé</div>
+    <div style="margin-top:8px; display:flex;gap:8px;align-items:center">
+      <label class="ts">Paires:</label>
+      <select id="backtestPairs" style="font-weight:600;padding:6px;border-radius:8px">
+        <option value="BTCUSDT,ETHUSDT" selected>BTCUSDT, ETHUSDT</option>
+        <option value="BTCUSDT">BTCUSDT</option>
+        <option value="ETHUSDT">ETHUSDT</option>
+        <option value="BNBUSDT">BNBUSDT</option>
+      </select>
+      <label class="ts">Bougies:</label>
+      <select id="backtestCandles" style="font-weight:600;padding:6px;border-radius:8px">
+        <option value="200" selected>200</option>
+        <option value="500">500</option>
+        <option value="1000">1000</option>
+      </select>
+      <label class="ts">Vitesse:</label>
+      <select id="backtestSpeed" style="font-weight:600;padding:6px;border-radius:8px">
+        <option value="50" selected>20x (50ms)</option>
+        <option value="100">10x (100ms)</option>
+        <option value="0">Instant</option>
+      </select>
+    </div>
+    <div id="progressContainer" style="margin-top:8px; background:#eee; border-radius:8px; height:20px; width:100%; display:none;">
+  <div id="progressBar" style="background:#4caf50; height:100%; width:0%; border-radius:8px;"></div>
+</div>
+<div id="progressText" class="small-muted" style="margin-top:4px"></div>
+<table style="margin-top:8px">
+      <thead>
+        <tr>
+          <th>Intervalle</th><th>Trades</th><th>Winrate</th>
+        </tr>
+      </thead>
+      <tbody id="backtestRows"></tbody>
+    </table>
+  </div>
+
+<div class="card">
     <div class="ts">Rapport automatique — tous les 4 jours</div>
     <div class="small muted" id="reportInfo">Prochain rapport: —</div>
     <div style="margin-top:8px; display:grid; grid-template-columns:1fr; gap:12px">
@@ -171,7 +220,7 @@
 <div id="toast" style="display:none" class="toast"></div>
 
 <script src="https://s3.tradingview.com/tv.js"></script>
-<script>
+<script type="module">
 /* ====== Configuration ====== */
 const MIN_DISPLAY_CONF = 80; // Afficher uniquement les signaux >= 80% (UI)
 const MIN_HIST_CONF = 80; // historique: ne garder que >= 80%
@@ -590,7 +639,7 @@ function startTestTrade(entryId, direction){
   if(!h) return toast('Entrée non trouvée');
   if(h.test && h.test.status === 'RUNNING') return toast('Test déjà en cours pour cette entrée');
   const now = Date.now();
-  h.test = { status:'RUNNING', direction, startedAt: now, evalAt: now + EVAL_DELAY_MS };
+  let _delay = EVAL_DELAY_1M; if(h.interval==='1h') _delay = EVAL_DELAY_1H; if(h.interval==='1d') _delay = EVAL_DELAY_1D; h.test = { status:'RUNNING', direction, startedAt: now, evalAt: now + _delay };
   saveHistory();
   scheduleEvaluation(h);
   toast(`Test ${direction} lancé pour ${h.assetName} (${h.interval})`);
@@ -781,9 +830,146 @@ async function init(){
 }
 init();
 
+
+/* ====== Backtest accéléré & Pagination historique ====== */
+let historyBacktest = { "1m": [], "1h": [], "1d": [] };
+let currentPage = 0;
+const PAGE_SIZE = 50;
+
+document.getElementById('histNextBtn').onclick = () => { nextPage(); };
+document.getElementById('histPrevBtn').onclick = () => { prevPage(); };
+
+document.getElementById('backtestBtn').addEventListener('click', runBacktest);
+
+async function runBacktest(){
+  try {
+    historyBacktest = { "1m": [], "1h": [], "1d": [] };
+    document.getElementById("backtestStats").textContent = "Chargement des données...";
+
+    const pairs = document.getElementById('backtestPairs').value.split(',').map(s=>s.trim());
+    const candles = parseInt(document.getElementById('backtestCandles').value,10) || 200;
+    const speed = parseInt(document.getElementById('backtestSpeed').value,10);
+    const intervals = ["1m","1h","1d"];
+
+    const progressContainer = document.getElementById("progressContainer");
+    const progressBar = document.getElementById("progressBar");
+    const progressText = document.getElementById("progressText");
+    progressContainer.style.display = "block";
+    progressBar.style.width = "0%";
+    progressText.textContent = "Démarrage backtest...";
+
+    let totalSteps = pairs.length * intervals.length * (candles-20);
+    let step = 0;
+
+    for(const interval of intervals){
+      for(const symbol of pairs){
+        const ohlc = await fetchOHLC(symbol, interval, candles);
+        const close = ohlc.map(c=>c.close);
+        const high = ohlc.map(c=>c.high);
+        const low = ohlc.map(c=>c.low);
+        const volume = ohlc.map(c=>c.volume);
+
+        for(let i=20;i<close.length-1;i++){
+          step++;
+          const pct = Math.round(step/totalSteps*100);
+          progressBar.style.width = pct + "%";
+          progressText.textContent = `Analyse ${step}/${totalSteps} bougies...`;
+
+          const sliceClose = close.slice(0,i+1);
+          const sliceHigh = high.slice(0,i+1);
+          const sliceLow = low.slice(0,i+1);
+          const sliceVol = volume.slice(0,i+1);
+
+          const {signal, confidence} = evaluate(sliceClose, sliceHigh, sliceLow, sliceVol, interval);
+
+          if(confidence >= MIN_HIST_CONF){
+            const entry = close[i];
+            const exit = close[i+1];
+            let verdict = "LOSS";
+            if(signal === "BUY" && exit > entry) verdict = "WIN";
+            if(signal === "SELL" && exit < entry) verdict = "WIN";
+            historyBacktest[interval].push({symbol, signal, entry, exit, verdict});
+          }
+
+          if(speed > 0){
+            await new Promise(resolve => setTimeout(resolve, speed));
+          }
+        }
+      }
+    }
+
+    renderBacktestStats();
+    progressText.textContent = "✔ Backtest terminé";
+  } catch(err){
+    console.error("Erreur Backtest:", err);
+    document.getElementById("backtestStats").textContent = "Erreur lors du backtest (voir console)";
+  }
+}
+
+function renderBacktestStats(){
+  const tbody = document.getElementById('backtestRows');
+  tbody.innerHTML = '';
+  let totalTrades=0, totalWins=0;
+  ["1m","1h","1d"].forEach(interval=>{
+    const trades = historyBacktest[interval] || [];
+    const wins = trades.filter(t=>t.verdict==="WIN").length;
+    const winrate = trades.length ? Math.round(100 * wins / trades.length) : 0;
+    totalTrades += trades.length;
+    totalWins += wins;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${interval}</td><td>${trades.length}</td><td>${winrate}%</td>`;
+    tbody.appendChild(tr);
+  });
+  const globalWinrate = totalTrades ? Math.round(100 * totalWins / totalTrades) : 0;
+  document.getElementById('backtestStats').textContent = `Global: ${totalTrades} trades, Winrate ${globalWinrate}%`;
+}
+
+/* Pagination historique */
+function renderHistoryPage(page){
+  historyRows.innerHTML = '';
+  const start = page * PAGE_SIZE;
+  const end = Math.min(start + PAGE_SIZE, history.length);
+  const slice = history.slice(start, end);
+  histCount.textContent = `Entrées: ${history.length}`;
+  slice.forEach(h=>{
+    const tr = document.createElement('tr');
+    const verdictClass = h.verdict === 'WIN' ? 'good' : (h.verdict === 'LOSS' ? 'bad' : 'muted');
+    const exitStr = h.exitPrice ? (h.exitPrice > 100 ? h.exitPrice.toFixed(2) : h.exitPrice.toFixed(6)) : '—';
+    const deltaStr = h.delta!=null ? formatPct(h.delta) : '—';
+    const indicatorsCount = h.indicators ? h.indicators.length : 0;
+    const tsHuman = formatDate(h.timestamp);
+    tr.innerHTML = `
+      <td>${h.assetName}</td>
+      <td>${h.interval}</td>
+      <td><span class="pill ${h.predicted.toLowerCase()}">${h.predicted}</span></td>
+      <td><span class="pct">${h.confidence}%</span></td>
+      <td>${h.price>100? h.price.toFixed(2) : h.price.toFixed(6)}</td>
+      <td>${exitStr}</td>
+      <td>${deltaStr}</td>
+      <td><span class="${verdictClass}">${h.verdict}</span></td>
+      <td>${indicatorsCount} ind.</td>
+      <td class="ts">${tsHuman}</td>
+    `;
+    historyRows.appendChild(tr);
+  });
+  const pageCount = Math.max(1, Math.ceil(history.length / PAGE_SIZE));
+  document.getElementById('pageInfo').textContent = `Page ${page+1} / ${pageCount}`;
+}
+
+function nextPage(){
+  if((currentPage+1)*PAGE_SIZE < history.length){ currentPage++; renderHistoryPage(currentPage); }
+}
+function prevPage(){
+  if(currentPage>0){ currentPage--; renderHistoryPage(currentPage); }
+}
+
+// override renderHistory to use pagination
+const _renderHistory = renderHistory;
+renderHistory = function(){ currentPage = 0; renderHistoryPage(currentPage); updateKPIs(); renderReports(); };
+
+
 /* ====== Fin du script ====== */
 </script>
 </body>
 </html>
-
 
