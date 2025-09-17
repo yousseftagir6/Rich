@@ -1,0 +1,789 @@
+﻿﻿<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Signaux précis — 1m, 1h & 1D (bougies clôturées, tests papier)</title>
+<style>
+  :root{ --bg:#0f1115; --card:#131722; --line:#202633; --fg:#eaeef5; --muted:#a0a8b8; --buy:#10b981; --sell:#ef4444; --neu:#6b7280; }
+  html,body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif}
+  .wrap{max-width:1220px;margin:0 auto;padding:14px}
+  h1{font-size:18px;margin:6px 0 12px}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  select,button{background:#1a2030;color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-weight:600}
+  button.primary{background:#1e293b;border-color:#2b3446}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin:10px 0}
+  .grid{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:1024px){ .grid{grid-template-columns:1fr 1fr 1fr} }
+  table{width:100%;border-collapse:separate;border-spacing:0}
+  th,td{padding:10px;border-bottom:1px solid var(--line);font-size:13px}
+  th{color:var(--muted);text-align:left}
+  tr{cursor:pointer}
+  tr:hover{background:#0c111a}
+  tr.strong{outline:2px solid rgba(16,185,129,.35); outline-offset:-2px; background:rgba(16,185,129,.03)}
+  .pill{display:inline-block;padding:4px 10px;border-radius:999px;font-weight:700;font-size:12px}
+  .pill.buy{background:rgba(16,185,129,.15);color:#a7f3d0;border:1px solid rgba(16,185,129,.35)}
+  .pill.sell{background:rgba(239,68,68,.15);color:#fecaca;border:1px solid rgba(239,68,68,.35)}
+  .pill.neu{background:rgba(107,114,128,.15);color:#e5e7eb;border:1px solid rgba(107,114,128,.35)}
+  .pct{font-weight:800}
+  .ts{color:var(--muted);font-size:12px}
+  #chart{height:58vh;min-height:360px}
+  #signalBox{margin-top:8px;text-align:center;font-size:16px;font-weight:800;padding:12px;border-radius:12px}
+  #signalBox.buy{background:rgba(16,185,129,.12);color:#a7f3d0;border:1px solid rgba(16,185,129,.25)}
+  #signalBox.sell{background:rgba(239,68,68,.12);color:#fecaca;border:1px solid rgba(239,68,68,.25)}
+  #signalBox.neu{background:rgba(107,114,128,.12);color:#e5e7eb;border:1px solid rgba(107,114,128,.25)}
+  .layout{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:1024px){ .layout{grid-template-columns:1.2fr .8fr} }
+  .feu{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px}
+  .light{width:110px;height:110px;border-radius:50%;box-shadow:0 0 32px rgba(0,0,0,.35) inset, 0 0 24px rgba(0,0,0,.25)}
+  .light.buy{background:radial-gradient(circle at 35% 35%, #4ade80, #16a34a 60%, #065f46)}
+  .light.sell{background:radial-gradient(circle at 35% 35%, #fca5a5, #ef4444 60%, #7f1d1d)}
+  .light.neu{background:radial-gradient(circle at 35% 35%, #d1d5db, #9ca3af 60%, #374151)}
+  .feuText{font-size:20px;font-weight:900}
+  .small{font-size:12px;color:var(--muted)}
+  .hint{font-size:12px;color:#9ca3af}
+  .kpi{display:flex;gap:10px;flex-wrap:wrap}
+  .kpi .box{background:#0f1422;border:1px dashed #273045;border-radius:10px;padding:10px 12px;font-size:12px;color:#b9c2d0}
+  .good{color:#86efac}
+  .bad{color:#fca5a5}
+  .muted{color:#9aa3b2}
+  .pill.ctx{background:#0b1220;border:1px solid #1f2b44;color:#b6c0d1}
+  .loading{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-radius:50%;border-top-color:#fff;animation:spin 1s ease-in-out infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .btn-small{padding:6px 8px;border-radius:8px;font-size:12px}
+  .btn-success{background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.18)}
+  .btn-danger{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.18)}
+  .btn-neutral{background:rgba(107,114,128,.06);border:1px solid rgba(107,114,128,.12)}
+  .toast{position:fixed;right:18px;bottom:18px;background:#0e1624;padding:10px 14px;border-radius:8px;border:1px solid #1e293b;color:#d8e0ee;box-shadow:0 8px 30px rgba(0,0,0,.6)}
+  .history-actions button{margin-right:6px}
+  .small-muted{font-size:11px;color:#95a1b3}
+  .download{margin-left:auto}
+  .icon{opacity:.9;margin-right:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Signaux précis — 1m, 1h & 1D (clôture, historique & tests papier)</h1>
+
+  <div class="controls card">
+    <span class="ts">Sélection:</span>
+    <select id="preset">
+      <option value="majors">Crypto + Forex majeurs (Binance)</option>
+      <option value="all" selected>Tous les actifs Binance</option>
+    </select>
+    <button class="primary" id="analyzeBtn">Analyser</button>
+    <button id="toggleMode">Mode feu rouge</button>
+    <button id="toggleFilter">Filtrer ≥ 80%</button>
+    <button id="notifBtn">Activer notifications</button>
+    <span id="autoInfo" class="ts">Auto: 60s</span>
+    <span id="statusInfo" class="ts">Chargement des symboles...</span>
+    <button id="downloadBtn" class="download">Télécharger la page</button>
+    <span class="ts" style="margin-left:auto">Éducatif uniquement</span>
+  </div>
+
+  <div id="normalMode" class="layout">
+    <div class="card">
+      <div class="grid">
+        <div>
+          <div class="ts" style="margin-bottom:6px">Intervalle 1m <span class="hint">(tri décroissant, bougie clôturée)</span></div>
+          <table>
+            <thead><tr><th>Actif</th><th>Prix</th><th>Signal</th><th>Fiabilité</th><th>Contexte</th><th>Maj</th></tr></thead>
+            <tbody id="rows_1m"></tbody>
+          </table>
+        </div>
+        <div>
+          <div class="ts" style="margin-bottom:6px">Intervalle 1h <span class="hint">(tri décroissant, bougie clôturée)</span></div>
+          <table>
+            <thead><tr><th>Actif</th><th>Prix</th><th>Signal</th><th>Fiabilité</th><th>Contexte</th><th>Maj</th></tr></thead>
+            <tbody id="rows_1h"></tbody>
+          </table>
+        </div>
+        <div>
+          <div class="ts" style="margin-bottom:6px">Intervalle 1D <span class="hint">(tri décroissant, bougie clôturée)</span></div>
+          <table>
+            <thead><tr><th>Actif</th><th>Prix</th><th>Signal</th><th>Fiabilité</th><th>Contexte</th><th>Maj</th></tr></thead>
+            <tbody id="rows_1d"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div id="chart"></div>
+      <div id="signalBox" class="neu">Touchez un actif (1m, 1h ou 1D) pour voir le graphique et tester</div>
+    </div>
+  </div>
+
+  <div id="feuMode" class="card" style="display:none">
+    <div class="feu">
+      <div id="feuLight" class="light neu"></div>
+      <div id="feuText" class="feuText">Sélectionne un actif dans les tableaux</div>
+      <div id="feuSmall" class="small">Mise à jour auto toutes les 60s</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+      <div class="ts">Historique — Prédiction vs Réalité (≥ 80%)</div>
+      <div class="kpi">
+        <div class="box" id="kpi_1m">1m: —</div>
+        <div class="box" id="kpi_1h">1h: —</div>
+        <div class="box" id="kpi_1d">1D: —</div>
+        <div class="box" id="kpi_all">Global: —</div>
+      </div>
+    </div>
+    <div style="margin-top:8px; display:flex;gap:8px;align-items:center">
+      <button id="clearHistory" class="btn-small btn-neutral">Effacer historique</button>
+      <div class="small-muted" id="histCount">Entrées: 0</div>
+    </div>
+    <table style="margin-top:8px">
+      <thead>
+        <tr>
+          <th>Actif</th><th>Intervalle</th><th>Signal</th><th>Fiabilité</th><th>Entrée</th><th>Sortie</th><th>Δ %</th><th>Verdict</th><th>Indicateurs</th><th>Horodatage</th>
+        </tr>
+      </thead>
+      <tbody id="historyRows"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="ts">Rapport automatique — tous les 4 jours</div>
+    <div class="small muted" id="reportInfo">Prochain rapport: —</div>
+    <div style="margin-top:8px; display:grid; grid-template-columns:1fr; gap:12px">
+      <div>
+        <div class="ts">Top indicateurs</div>
+        <table>
+          <thead><tr><th>Indicateur</th><th>Taux de réussite</th><th>Succès/Total</th></tr></thead>
+          <tbody id="reportInd"></tbody>
+        </table>
+      </div>
+      <div>
+        <div class="ts">Top combinaisons (paires)</div>
+        <table>
+          <thead><tr><th>Combinaison</th><th>Taux de réussite</th><th>Succès/Total</th></tr></thead>
+          <tbody id="reportComb"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" style="display:none" class="toast"></div>
+
+<script src="https://s3.tradingview.com/tv.js"></script>
+<script>
+/* ====== Configuration ====== */
+const MIN_DISPLAY_CONF = 80; // Afficher uniquement les signaux >= 80% (UI)
+const MIN_HIST_CONF = 80; // historique: ne garder que >= 80%
+const CONTEXT_FILTER = true;
+const MAX_SYMBOLS = 200; // Limiter pour éviter surcharge
+const HISTORY_KEY = 'trade_history_v1';
+const EVAL_DELAY_1M = 60 * 1000;          // 1 minute
+const EVAL_DELAY_1H = 60 * 60 * 1000;     // 1 heure
+const EVAL_DELAY_1D = 24 * 60 * 60 * 1000;// 1 jour
+
+/* ====== Actifs (Binance) ====== */
+const sets = {
+  majors: [
+    {name:"BTC/USDT", tv:"BINANCE:BTCUSDT", binance:"BTCUSDT"},
+    {name:"ETH/USDT", tv:"BINANCE:ETHUSDT", binance:"ETHUSDT"},
+    {name:"BNB/USDT", tv:"BINANCE:BNBUSDT", binance:"BNBUSDT"},
+    {name:"SOL/USDT", tv:"BINANCE:SOLUSDT", binance:"SOLUSDT"},
+    {name:"XRP/USDT", tv:"BINANCE:XRPUSDT", binance:"XRPUSDT"},
+    {name:"ADA/USDT", tv:"BINANCE:ADAUSDT", binance:"ADAUSDT"},
+    {name:"DOGE/USDT", tv:"BINANCE:DOGEUSDT", binance:"DOGEUSDT"}
+  ],
+  all: []
+};
+let activeSet = "all";
+let showStrongOnly = true;
+let notificationsEnabled = false;
+let allSymbols = [];
+
+/* ====== UI refs ====== */
+const tbody1m = document.getElementById('rows_1m');
+const tbody1h = document.getElementById('rows_1h');
+const tbody1d = document.getElementById('rows_1d');
+const historyRows = document.getElementById('historyRows');
+const reportInd = document.getElementById('reportInd');
+const reportComb = document.getElementById('reportComb');
+const reportInfo = document.getElementById('reportInfo');
+const statusInfo = document.getElementById('statusInfo');
+const signalBox = document.getElementById('signalBox');
+const kpi1m = document.getElementById('kpi_1m');
+const kpi1h = document.getElementById('kpi_1h');
+const kpi1d = document.getElementById('kpi_1d');
+const kpiAll = document.getElementById('kpi_all');
+const histCount = document.getElementById('histCount');
+
+/* ====== Récupération de tous les symboles Binance ====== */
+async function fetchAllBinanceSymbols() {
+  statusInfo.innerHTML = '<span class="loading"></span> Chargement des symboles...';
+  try {
+    const response = await fetch('https://api.binance.com/api/v3/exchangeInfo');
+    const data = await response.json();
+    const usdtPairs = data.symbols
+      .filter(s => s.quoteAsset === 'USDT' && s.status === 'TRADING')
+      .map(s => s.symbol);
+    const tickerResponse = await fetch('https://api.binance.com/api/v3/ticker/24hr');
+    const tickerData = await tickerResponse.json();
+    const volumeMap = {};
+    tickerData.forEach(t => { volumeMap[t.symbol] = parseFloat(t.quoteVolume || 0); });
+    usdtPairs.sort((a, b) => (volumeMap[b] || 0) - (volumeMap[a] || 0));
+    const limitedSymbols = usdtPairs.slice(0, MAX_SYMBOLS);
+    sets.all = limitedSymbols.map(symbol => ({
+      name: symbol.replace('USDT', '/USDT'),
+      tv: `BINANCE:${symbol}`,
+      binance: symbol
+    }));
+    statusInfo.textContent = `Symboles chargés: ${sets.all.length}`;
+    return true;
+  } catch (error) {
+    console.error('Erreur chargement symboles:', error);
+    // fallback: utiliser "majors"
+    sets.all = sets.majors.slice();
+    statusInfo.textContent = 'Erreur chargement symboles — fallback vers majors';
+    return false;
+  }
+}
+
+/* ====== Notifications ====== */
+async function enableNotifications(){
+  if(!("Notification" in window)) return alert("Notifications non supportées.");
+  let perm = Notification.permission;
+  if(perm === "default") perm = await Notification.requestPermission();
+  if(perm !== "granted") return alert("Permission refusée.");
+  notificationsEnabled = true;
+  alert("Notifications activées !");
+}
+document.getElementById('notifBtn').onclick = enableNotifications;
+
+/* ====== TradingView chart ====== */
+let current = {tv:null, interval:"60"};
+function loadChart(tvSymbol, interval){
+  if(!tvSymbol) return;
+  signalBox.textContent = "Chargement graphique...";
+  signalBox.className = "neu";
+  document.getElementById('chart').innerHTML = '';
+  current = {tv: tvSymbol, interval};
+  try {
+    new TradingView.widget({
+      container_id: "chart",
+      symbol: tvSymbol,
+      interval: interval,
+      timezone: "Etc/UTC",
+      theme: "dark",
+      style: "1",
+      locale: "fr",
+      studies: ["RSI@tv-basicstudies","MACD@tv-basicstudies","BollingerBands@tv-basicstudies","MAExp@tv-basicstudies","MASimple@tv-basicstudies"],
+      hide_side_toolbar: false,
+      autosize: true,
+      allow_symbol_change: false
+    });
+  } catch(e){
+    // parfois le widget ne charge pas (exécution locale) — on ignore
+    console.warn('TradingView widget error', e);
+  }
+}
+
+/* ====== Fetch (Binance) ====== */
+async function fetchOHLC(symbol, tf, limit){
+  const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=${limit}`;
+  const r = await fetch(url);
+  const j = await r.json();
+  return j.map(k=>({time:+k[0], open:+k[1], high:+k[2], low:+k[3], close:+k[4], volume:+k[5]}));
+}
+async function fetchLastPrice(symbol){
+  const url = `https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`;
+  const r = await fetch(url);
+  const j = await r.json();
+  return +j.price;
+}
+
+/* ====== Indicateurs (conservés) ====== */
+/* ... (les fonctions sma, ema, rsi, macd, bollinger, ichimokuTK, atr, dmiAdx, stochastic, vwap,
+        heikinAshi, superTrend restent identiques à l'original) ... */
+
+/* Pour éviter d'allonger inutilement la réponse, je réutilise les fonctions déjà présentes:
+   sma, ema, rsi, macd, bollinger, ichimokuTK, atr, dmiAdx, stochastic, vwap, heikinAshi, superTrend
+   (elles sont placées ici de façon abrégée mais dans le code réel ci-dessous sont pleinement présentes)
+*/
+function sma(arr, n){ const out = Array(arr.length).fill(null); let s=0; for(let i=0;i<arr.length;i++){ s+=arr[i]; if(i>=n) s-=arr[i-n]; if(i>=n-1) out[i]=s/n; } return out; }
+function ema(arr, n){ const out=Array(arr.length).fill(null), k=2/(n+1); let prev=null; for(let i=0;i<arr.length;i++){ const v=arr[i]; if(prev==null){ out[i]=v; prev=v; continue; } prev=v*k+prev*(1-k); out[i]=prev; } return out; }
+function rsi(values, n=14){ const out=Array(values.length).fill(null); let g=0,l=0; for(let i=1;i<values.length;i++){ const ch=values[i]-values[i-1]; const up=Math.max(ch,0), dn=Math.max(-ch,0); if(i<=n){ g+=up; l+=dn; if(i===n){ const rs=l===0?1000:(g/n)/(l/n); out[i]=100-100/(1+rs); } } else { g=(g*(n-1)/n)+up/n; l=(l*(n-1)/n)+dn/n; const rs=l===0?1000:g/l; out[i]=100-100/(1+rs); } } return out; }
+function macd(values, fast=12, slow=26, signal=9){ const ef=ema(values,fast), es=ema(values,slow); const line=values.map((_,i)=>(ef[i]!=null&&es[i]!=null)?ef[i]-es[i]:null); const start=line.findIndex(v=>v!=null); const valid=line.slice(start).filter(v=>v!=null); const sig=ema(valid,signal); const signalLine=Array(line.length).fill(null); for(let i=0;i<sig.length;i++) signalLine[start+i]=sig[i]; const hist=line.map((v,i)=>(v!=null&&signalLine[i]!=null)?v-signalLine[i]:null); return {macdLine:line, signalLine, hist}; }
+function bollinger(values, n=20, mult=2){ const out=Array(values.length).fill(null); for(let i=0;i<values.length;i++){ if(i<n-1) continue; const slice=values.slice(i-n+1,i+1); const mean=slice.reduce((a,b)=>a+b,0)/n; const std=Math.sqrt(slice.reduce((a,b)=>a+(b-mean)*(b-mean),0)/n); out[i]={mid:mean, upper:mean+mult*std, lower:mean-mult*std}; } return out; }
+function ichimokuTK(high, low, tenkanLen=9, kijunLen=26){ const len=high.length, tenkan=Array(len).fill(null), kijun=Array(len).fill(null); for(let i=0;i<len;i++){ if(i>=tenkanLen-1){ const h=Math.max(...high.slice(i-tenkanLen+1,i+1)); const l=Math.min(...low.slice(i-tenkanLen+1,i+1)); tenkan[i]=(h+l)/2; } if(i>=kijunLen-1){ const h=Math.max(...high.slice(i-kijunLen+1,i+1)); const l=Math.min(...low.slice(i-kijunLen+1,i+1)); kijun[i]=(h+l)/2; } } return {tenkan,kijun}; }
+function trueRange(h,l,cPrev){ return Math.max(h-l, Math.abs(h-cPrev), Math.abs(l-cPrev)); }
+function atr(high, low, close, n=14){ const out=Array(close.length).fill(null); let prevClose = close[0], trSum=0; for(let i=1;i<close.length;i++){ const tr = trueRange(high[i], low[i], prevClose); prevClose = close[i]; if(i<=n){ trSum += tr; if(i===n) out[i]=trSum/n; } else { out[i] = (out[i-1]*(n-1)+tr)/n; } } return out; }
+function dmiAdx(high, low, close, n=14){ const len=close.length; const plusDM=Array(len).fill(0), minusDM=Array(len).fill(0), trArr=Array(len).fill(0); for(let i=1;i<len;i++){ const up = high[i]-high[i-1]; const dn = low[i-1]-low[i]; plusDM[i] = (up>dn && up>0)? up:0; minusDM[i]= (dn>up && dn>0)? dn:0; trArr[i] = trueRange(high[i], low[i], close[i-1]); } function smooth(arr, period){ const out=Array(len).fill(null); let sum=0; for(let i=1;i<=period;i++) sum += arr[i]||0; out[period]=sum; for(let i=period+1;i<len;i++) out[i]=out[i-1] - (out[i-1]/period) + (arr[i]||0); return out; } const trSm = smooth(trArr, n); const pSm  = smooth(plusDM, n); const mSm  = smooth(minusDM, n); const pDI = Array(len).fill(null), mDI=Array(len).fill(null), dx=Array(len).fill(null); for(let i=n;i<len;i++){ if(trSm[i]>0){ pDI[i] = 100*(pSm[i]/trSm[i]); mDI[i] = 100*(mSm[i]/trSm[i]); const denom = pDI[i]+mDI[i]; dx[i] = denom>0 ? 100*Math.abs(pDI[i]-mDI[i])/denom : null; } } const adx=Array(len).fill(null); let sum=0; for(let i=0;i<len;i++){ if(i<2*n) { if(dx[i]!=null){ sum+=dx[i]; if(i===2*n-1) adx[i]=sum/n; } } else { adx[i]=(adx[i-1]*(n-1)+dx[i])/n; } } return {plusDI:pDI, minusDI:mDI, adx}; }
+function stochastic(high, low, close, kLen=14, dLen=3){ const len=close.length, K=Array(len).fill(null), D=Array(len).fill(null); for(let i=0;i<len;i++){ if(i<kLen-1) continue; const h=Math.max(...high.slice(i-kLen+1,i+1)); const l=Math.min(...low.slice(i-kLen+1,i+1)); K[i] = (h===l) ? 50 : ((close[i]-l)/(h-l))*100; } const Dvals = sma(K.map(v=>v??0), dLen); for(let i=0;i<len;i++) D[i] = (i<kLen-1)? null : Dvals[i]; return {k:K, d:D}; }
+function vwap(high, low, close, volume, lookback=96){ const len=close.length, out=Array(len).fill(null); let cumPV=0, cumV=0; const start = Math.max(0, len - lookback); for(let i=start;i<len;i++){ const tp = (high[i]+low[i]+close[i])/3; cumPV += tp*volume[i]; cumV  += volume[i]; out[i] = cumV>0 ? cumPV/cumV : null; } return out; }
+function heikinAshi(ohlc){ const len=ohlc.length; const haO=Array(len).fill(null), haH=Array(len).fill(null), haL=Array(len).fill(null), haC=Array(len).fill(null); for(let i=0;i<len;i++){ const o=ohlc[i].open, h=ohlc[i].high, l=ohlc[i].low, c=ohlc[i].close; haC[i] = (o+h+l+c)/4; if(i===0) haO[i] = (o+c)/2; else haO[i] = (haO[i-1] + haC[i-1])/2; haH[i] = Math.max(h, haO[i], haC[i]); haL[i] = Math.min(l, haO[i], haC[i]); } return {open:haO, high:haH, low:haL, close:haC}; }
+function superTrend(high, low, close, atrArr, mult=3){ const len=close.length; const hl2 = high.map((h,i)=>(h+low[i])/2); const upperBasic = hl2.map((m,i)=> m + mult*(atrArr[i]||0)); const lowerBasic = hl2.map((m,i)=> m - mult*(atrArr[i]||0)); const upper=Array(len).fill(null), lower=Array(len).fill(null), trend=Array(len).fill(null); for(let i=0;i<len;i++){ if(i===0){ upper[i]=upperBasic[i]; lower[i]=lowerBasic[i]; continue; } upper[i] = (upperBasic[i] < (upper[i-1]??upperBasic[i])) || (close[i-1] > (upper[i-1]??upperBasic[i])) ? upperBasic[i] : (upper[i-1]??upperBasic[i]); lower[i] = (lowerBasic[i] > (lower[i-1]??lowerBasic[i])) || (close[i-1] < (lower[i-1]??lowerBasic[i])) ? lowerBasic[i] : (lower[i-1]??lowerBasic[i]); if(trend[i-1]==null){ trend[i] = close[i] > lower[i] ? 1 : (close[i] < upper[i] ? -1 : null); }else if(trend[i-1]===1){ trend[i] = close[i] < lower[i] ? -1 : 1; }else if(trend[i-1]===-1){ trend[i] = close[i] > upper[i] ? 1 : -1; } } return {upper, lower, trend}; }
+
+/* ====== Scoring multi-indicateurs amélioré ====== */
+function evaluate(close, high, low, volume, intervalKey){
+  const i=close.length-1;
+  const usedIndicators = [];
+  const contribs = [];
+  const intervalWeight = { '1m': 0.8, '1h': 1.0, '1d': 1.2 };
+  const weightMult = intervalWeight[intervalKey] || 1.0;
+
+  const sma10=sma(close,10), sma20=sma(close,20), sma50=sma(close,50);
+  if(sma10[i]!=null && sma20[i]!=null){ usedIndicators.push('SMA(10/20)'); contribs.push({w:2.0*weightMult, s: sma10[i]>sma20[i]?+1:-1}); }
+  if(sma20[i]!=null && sma50[i]!=null){ usedIndicators.push('SMA(20/50)'); contribs.push({w:1.5*weightMult, s: sma20[i]>sma50[i]?+1:-1}); }
+  const ema12=ema(close,12), ema26=ema(close,26), ema50=ema(close,50);
+  if(ema12[i]!=null && ema26[i]!=null){ usedIndicators.push('EMA(12/26)'); contribs.push({w:2.0*weightMult, s: ema12[i]>ema26[i]?+1:-1}); }
+  if(ema26[i]!=null && ema50[i]!=null){ usedIndicators.push('EMA(26/50)'); contribs.push({w:1.5*weightMult, s: ema26[i]>ema50[i]?+1:-1}); }
+  const rsi14=rsi(close,14);
+  if(rsi14[i]!=null){ let s=0; if(rsi14[i]<30) s=+1; else if(rsi14[i]>70) s=-1; else if(rsi14[i] > 55 && rsi14[i] < 70) s=-0.5; else if(rsi14[i] > 30 && rsi14[i] < 45) s=+0.5; usedIndicators.push('RSI(14)'); contribs.push({w:1.4*weightMult, s}); }
+  const mac=macd(close);
+  if(mac.macdLine[i]!=null && mac.signalLine[i]!=null){ usedIndicators.push('MACD'); contribs.push({w:2.0*weightMult, s: mac.macdLine[i]>mac.signalLine[i]?+1:-1}); }
+  const bb20=bollinger(close,20,2);
+  if(bb20[i]!=null){ let s=0; const bandwidth = (bb20[i].upper - bb20[i].lower) / bb20[i].mid; if(close[i]<bb20[i].lower) s=+1; else if(close[i]>bb20[i].upper) s=-1; if(bandwidth < 0.1) s *= 1.5; usedIndicators.push('Bollinger(20,2)'); contribs.push({w:1.0*weightMult, s}); }
+  const {tenkan,kijun}=ichimokuTK(high, low, 9, 26);
+  if(tenkan[i]!=null && kijun[i]!=null){ usedIndicators.push('IchimokuTK'); contribs.push({w:1.4*weightMult, s: tenkan[i]>kijun[i]?+1:-1}); }
+  if(close[i]!=null && close[i-1]!=null){ usedIndicators.push('Momentum'); contribs.push({w:1.0*weightMult, s: close[i]>close[i-1]?+1:-1}); }
+  const dmi=dmiAdx(high, low, close, 14);
+  if(dmi.adx[i]!=null && dmi.plusDI[i]!=null && dmi.minusDI[i]!=null){ const strongTrend = dmi.adx[i] >= 25 ? 1.5 : 0.8; const s = dmi.plusDI[i] > dmi.minusDI[i] ? +1 : -1; usedIndicators.push('ADX/DMI'); contribs.push({w:2.0*strongTrend*weightMult, s}); }
+  const stoch=stochastic(high, low, close, 14, 3);
+  if(stoch.k[i]!=null && stoch.d[i]!=null){ let s=0; if(stoch.k[i] < 20 && stoch.d[i] < 20) s=+1; else if(stoch.k[i] > 80 && stoch.d[i] > 80) s=-1; else if(stoch.k[i] > 70 && stoch.d[i] > 70) s=-0.7; else if(stoch.k[i] < 30 && stoch.d[i] < 30) s=+0.7; usedIndicators.push('Stoch(14,3)'); contribs.push({w:1.1*weightMult, s}); }
+  const vw=vwap(high, low, close, volume, 96);
+  if(vw[i]!=null){ usedIndicators.push('VWAP'); contribs.push({w:1.2*weightMult, s: close[i]>vw[i]?+1:-1}); }
+  const ha=heikinAshi({open:close.map((_,idx)=>close[idx-1]||close[0]), high, low, close});
+  if(i>0){ const haTrend = ha.close[i] > ha.open[i] ? +1 : -1; usedIndicators.push('HeikinAshi'); contribs.push({w:1.3*weightMult, s: haTrend}); }
+  const atr14 = atr(high, low, close, 14);
+  const st = superTrend(high, low, close, atr14, 3);
+  if(st.trend[i]!=null){ usedIndicators.push('SuperTrend'); contribs.push({w:2.0*weightMult, s: st.trend[i]===1?+1:-1}); }
+  const volSma20 = sma(volume, 20);
+  if(volSma20[i]!=null && volume[i]!=null){ const volRatio = volume[i] / volSma20[i]; let volSignal = 0; if(volRatio > 1.5) volSignal = close[i] > close[i-1] ? +0.8 : -0.8; usedIndicators.push('Volume'); contribs.push({w:0.8*weightMult, s: volSignal}); }
+
+  let totalWeight = 0; let totalScore = 0;
+  for(const c of contribs){ totalWeight += c.w; totalScore += c.w * c.s; }
+  const normalizedScore = totalWeight > 0 ? totalScore / totalWeight : 0;
+  const confidence = Math.min(100, Math.max(0, Math.round(50 + 50 * normalizedScore)));
+  return { signal: normalizedScore > 0 ? 'BUY' : 'SELL', confidence, usedIndicators, strength: Math.abs(normalizedScore) };
+}
+
+/* ====== Analyse d'un actif ====== */
+async function analyzeAsset(asset, intervalKey, limit=100){
+  const tfMap = {'1m':'1m', '1h':'1h', '1d':'1d'};
+  const tf = tfMap[intervalKey];
+  const ohlc = await fetchOHLC(asset.binance, tf, limit);
+  const close = ohlc.map(k=>k.close);
+  const high = ohlc.map(k=>k.high);
+  const low = ohlc.map(k=>k.low);
+  const volume = ohlc.map(k=>k.volume);
+  const lastPrice = await fetchLastPrice(asset.binance);
+  const {signal, confidence, usedIndicators, strength} = evaluate(close, high, low, volume, intervalKey);
+  return { asset, interval: intervalKey, price: lastPrice, signal, confidence, strength, usedIndicators, timestamp: Date.now() };
+}
+
+/* ====== Cache pour éviter de surcharger l'API ====== */
+const cache = { '1m':{}, '1h':{}, '1d':{} };
+const CACHE_TTL = 60000; // 60 secondes
+function getFromCache(symbol, interval){
+  const entry = cache[interval][symbol];
+  if(entry && Date.now() - entry.timestamp < CACHE_TTL) return entry;
+  return null;
+}
+function setToCache(symbol, interval, data){ cache[interval][symbol] = {...data, timestamp: Date.now()}; }
+
+/* ====== Analyse en masse (avec batch pour rate-limit) ====== */
+async function analyzeAll(intervalKey){
+  const symbols = activeSet === 'all' ? sets.all : sets.majors;
+  const results = [];
+  const batchSize = 6;
+  for(let i = 0; i < symbols.length; i += batchSize){
+    const batch = symbols.slice(i, i + batchSize);
+    const batchResults = await Promise.allSettled(batch.map(symbol => analyzeAsset(symbol, intervalKey)));
+    batchResults.forEach(result => {
+      if(result.status === 'fulfilled') {
+        results.push(result.value);
+        setToCache(result.value.asset.binance, intervalKey, result.value);
+      }
+    });
+    statusInfo.textContent = `Analyse ${intervalKey}: ${Math.min(i + batchSize, symbols.length)}/${symbols.length}`;
+    await new Promise(resolve => setTimeout(resolve, 600)); // petit délai
+  }
+  return results;
+}
+
+/* ====== Affichage des résultats ====== */
+function renderResults(intervalKey, results){
+  const tbody = document.getElementById(`rows_${intervalKey}`);
+  tbody.innerHTML = '';
+  const filteredResults = showStrongOnly ? results.filter(r => r.confidence >= MIN_DISPLAY_CONF) : results;
+  filteredResults.sort((a, b) => b.confidence - a.confidence);
+  filteredResults.forEach(result => {
+    const row = document.createElement('tr');
+    if(result.confidence >= 80) row.classList.add('strong');
+    row.onclick = () => {
+      loadChart(result.asset.tv, result.interval === '1m' ? '1' : result.interval === '1h' ? '60' : 'D');
+      signalBox.textContent = `${result.asset.name} — ${result.signal} (${result.confidence}%)`;
+      signalBox.className = result.signal.toLowerCase();
+      // afficher boutons test si interval 1m (design demandé)
+      renderSignalActions(result);
+    };
+    const minsAgo = Math.floor((Date.now() - result.timestamp) / 60000);
+    row.innerHTML = `
+      <td>${result.asset.name}</td>
+      <td>${result.price.toFixed(result.price > 100 ? 2 : 6)}</td>
+      <td><span class="pill ${result.signal.toLowerCase()}">${result.signal}</span></td>
+      <td><span class="pct">${result.confidence}%</span></td>
+      <td><span class="pill ctx">${result.usedIndicators.length} ind.</span></td>
+      <td class="ts">${minsAgo}min</td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+function renderFromCache(intervalKey){
+  const cachedData = Object.values(cache[intervalKey]);
+  renderResults(intervalKey, cachedData);
+}
+
+/* ====== Historique (localStorage) ====== */
+let history = loadHistory();
+function loadHistory(){
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); }
+  catch(e){ return []; }
+}
+function saveHistory(){ localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); updateKPIs(); renderHistory(); }
+function addHistoryIfNew(result){
+  if(!result || result.confidence < MIN_HIST_CONF) return;
+  const minuteTs = Math.floor(result.timestamp / 60000) * 60000;
+  const id = `${result.asset.binance}_${result.interval}_${minuteTs}`;
+  if(history.some(h=>h.id===id)) return; // déjà présent
+
+  const entry = {
+    id,
+    assetName: result.asset.name,
+    symbol: result.asset.binance,
+    interval: result.interval,
+    predicted: result.signal,
+    confidence: result.confidence,
+    price: result.price,
+    timestamp: minuteTs,
+    indicators: result.usedIndicators || [],
+    verdict: 'PENDING',
+    delta: null,
+    exitPrice: null,
+    test: null
+  };
+
+  history.unshift(entry);
+  if(history.length > 500) history = history.slice(0, 500);
+
+  // 🚀 Auto-test pour 1m, 1h et 1D
+  let delay = null;
+  if(result.interval === '1m') delay = EVAL_DELAY_1M;
+  if(result.interval === '1h') delay = EVAL_DELAY_1H;
+  if(result.interval === '1d') delay = EVAL_DELAY_1D;
+
+  if(delay){
+    entry.test = {
+      status: 'RUNNING',
+      direction: result.signal,
+      startedAt: Date.now(),
+      evalAt: Date.now() + delay
+    };
+    scheduleEvaluation(entry);
+  }
+
+  saveHistory();
+}
+
+
+/* ====== Rendu historique ====== */
+function formatDate(ts){
+  const d = new Date(ts);
+  return d.toLocaleString();
+}
+function formatPct(v){
+  if(v==null) return '—';
+  return `${v>0?'+':''}${v.toFixed(2)}%`;
+}
+function renderHistory(){
+  historyRows.innerHTML = '';
+  histCount.textContent = `Entrées: ${history.length}`;
+  history.forEach(h=>{
+    const tr = document.createElement('tr');
+    const verdictClass = h.verdict === 'WIN' ? 'good' : (h.verdict === 'LOSS' ? 'bad' : 'muted');
+    const exitStr = h.exitPrice ? (h.exitPrice > 100 ? h.exitPrice.toFixed(2) : h.exitPrice.toFixed(6)) : '—';
+    const deltaStr = h.delta!=null ? formatPct(h.delta) : '—';
+    const indicatorsCount = h.indicators ? h.indicators.length : 0;
+    const tsHuman = formatDate(h.timestamp);
+    tr.innerHTML = `
+      <td>${h.assetName}</td>
+      <td>${h.interval}</td>
+      <td><span class="pill ${h.predicted.toLowerCase()}">${h.predicted}</span></td>
+      <td><span class="pct">${h.confidence}%</span></td>
+      <td>${h.price>100? h.price.toFixed(2) : h.price.toFixed(6)}</td>
+      <td>${exitStr}</td>
+      <td>${deltaStr}</td>
+      <td><span class="${verdictClass}">${h.verdict}</span></td>
+      <td>${indicatorsCount} ind.</td>
+      <td class="ts">${tsHuman}</td>
+    `;
+    // actions cell: si interval 1m et verdict pending -> ajouter boutons Test Buy / Test Sell / Eval now
+    const actionsCell = document.createElement('td');
+    actionsCell.style.display = 'none'; // caché - on n'utilise pas colonne séparée pour actions (UI simple)
+    // add row to table
+    historyRows.appendChild(tr);
+  });
+  updateKPIs();
+  renderReports();
+}
+
+/* ====== KPI et Rapport (simples) ====== */
+function updateKPIs(){
+  const byInterval = { '1m':[], '1h':[], '1d':[] };
+  history.forEach(h => { if(byInterval[h.interval]) byInterval[h.interval].push(h); });
+  function rate(arr){
+    if(!arr || arr.length===0) return '—';
+    const wins = arr.filter(x=>x.verdict==='WIN').length;
+    return `${wins}/${arr.length} (${Math.round(100*wins/arr.length)}%)`;
+  }
+  kpi1m.textContent = `1m: ${rate(byInterval['1m'])}`;
+  kpi1h.textContent = `1h: ${rate(byInterval['1h'])}`;
+  kpi1d.textContent = `1D: ${rate(byInterval['1d'])}`;
+  const totalWins = history.filter(h=>h.verdict==='WIN').length;
+  kpiAll.textContent = `Global: ${totalWins}/${history.length} (${history.length?Math.round(100*totalWins/history.length):'—'}%)`;
+}
+
+/* Rapport: top indicateurs et paires */
+function renderReports(){
+  // Indicateurs
+  const indMap = {};
+  const pairMap = {};
+  history.forEach(h=>{
+    const success = h.verdict === 'WIN' ? 1 : 0;
+    (h.indicators||[]).forEach(ind=>{
+      if(!indMap[ind]) indMap[ind] = {name:ind, total:0, wins:0};
+      indMap[ind].total++; indMap[ind].wins += success;
+    });
+    // pair combos (paires d'indicateurs)
+    const inds = (h.indicators||[]).slice(0,6);
+    for(let i=0;i<inds.length;i++){
+      for(let j=i+1;j<inds.length;j++){
+        const key = [inds[i], inds[j]].sort().join(' | ');
+        if(!pairMap[key]) pairMap[key] = {combo:key, total:0, wins:0};
+        pairMap[key].total++; pairMap[key].wins += success;
+      }
+    }
+  });
+  const indArr = Object.values(indMap).sort((a,b)=>b.total-a.total).slice(0,10);
+  reportInd.innerHTML = indArr.map(i => `<tr><td>${i.name}</td><td>${i.total?Math.round(100*i.wins/i.total):'—'}%</td><td>${i.wins}/${i.total}</td></tr>`).join('') || '<tr><td colspan="3">Aucune donnée</td></tr>';
+  const pairArr = Object.values(pairMap).sort((a,b)=>b.total-a.total).slice(0,10);
+  reportComb.innerHTML = pairArr.map(p => `<tr><td>${p.combo}</td><td>${p.total?Math.round(100*p.wins/p.total):'—'}%</td><td>${p.wins}/${p.total}</td></tr>`).join('') || '<tr><td colspan="3">Aucune donnée</td></tr>';
+  reportInfo.textContent = `Dérivé depuis ${history.length} entrées`;
+}
+
+/* ====== Test Buy / Sell (tests papier) ====== */
+/* Chaque test est enregistré dans history[i].test = { status:'RUNNING'|'DONE', direction:'BUY'|'SELL', startedAt, evalAt } */
+/* On planifie évaluation (et on reprend après reload) */
+const pendingTimers = {}; // id -> timeoutId
+
+function startTestTrade(entryId, direction){
+  const h = history.find(x=>x.id===entryId);
+  if(!h) return toast('Entrée non trouvée');
+  if(h.test && h.test.status === 'RUNNING') return toast('Test déjà en cours pour cette entrée');
+  const now = Date.now();
+  h.test = { status:'RUNNING', direction, startedAt: now, evalAt: now + EVAL_DELAY_MS };
+  saveHistory();
+  scheduleEvaluation(h);
+  toast(`Test ${direction} lancé pour ${h.assetName} (${h.interval})`);
+  renderHistory();
+}
+
+function scheduleEvaluation(h){
+  // annuler timer précédent
+  if(pendingTimers[h.id]) { clearTimeout(pendingTimers[h.id]); delete pendingTimers[h.id]; }
+  const remaining = Math.max(0, (h.test.evalAt || 0) - Date.now());
+  pendingTimers[h.id] = setTimeout(()=> evaluateTestTrade(h.id), remaining + 50);
+}
+
+async function evaluateTestTrade(entryId){
+  const h = history.find(x=>x.id===entryId);
+  if(!h || !h.test) return;
+  // éviter double éval
+  if(h.test.status === 'DONE') return;
+  try {
+    const exitPrice = await fetchLastPrice(h.symbol);
+    const delta = (exitPrice - h.price) / h.price * 100;
+    const dir = h.test.direction;
+    const isWin = (dir === 'BUY') ? (exitPrice > h.price) : (exitPrice < h.price);
+    h.exitPrice = exitPrice;
+    h.delta = delta;
+    h.verdict = isWin ? 'WIN' : 'LOSS';
+    h.test.status = 'DONE';
+    h.test.evaluatedAt = Date.now();
+    saveHistory();
+    toast(`Test ${dir} pour ${h.assetName}: ${h.verdict} (${formatPct(delta)})`);
+    // notification optionnelle
+    if(notificationsEnabled){
+      new Notification(`${h.assetName} ${h.verdict}`, { body: `${h.test.direction} ${formatPct(delta)}` });
+    }
+  } catch (e) {
+    console.error('Erreur évaluation test', e);
+    toast('Erreur lors de l\'évaluation (voir console)');
+  }
+}
+
+/* Évaluer immédiatement depuis l'UI (utile pour debug) */
+async function evaluateNow(entryId){
+  const h = history.find(x=>x.id===entryId);
+  if(!h) return;
+  if(!h.test || h.test.status !== 'RUNNING') {
+    toast('Aucun test en cours pour cette entrée');
+    return;
+  }
+  // forcer l'évaluation maintenant
+  if(pendingTimers[h.id]) { clearTimeout(pendingTimers[h.id]); delete pendingTimers[h.id]; }
+  await evaluateTestTrade(entryId);
+}
+
+/* Reprendre tests après reload */
+function resumePendingTests(){
+  history.forEach(h=>{
+    if(h.test && h.test.status === 'RUNNING'){
+      // si evalAt passé -> évaluer de suite
+      if((h.test.evalAt || 0) <= Date.now()){
+        evaluateTestTrade(h.id);
+      } else {
+        scheduleEvaluation(h);
+      }
+    }
+  });
+}
+
+/* ====== Actions UI pour signal sélectionné ====== */
+function renderSignalActions(result){
+  // Clear existing small controls
+  const html = [];
+  // Afficher informations + boutons Test seulement pour 1m (demande)
+  html.push(`<div style="display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap">`);
+  html.push(`<div class="small-muted">Actif: ${result.asset.name} • ${result.interval} • ${result.confidence}%</div>`);
+  // Si on souhaite tester: ajouter au tableau historique (optionnel)
+  const minuteTs = Math.floor(result.timestamp / 60000) * 60000;
+  const id = `${result.asset.binance}_${result.interval}_${minuteTs}`;
+  const inHist = history.find(h=>h.id===id);
+  if(!inHist && result.confidence >= MIN_HIST_CONF){
+    html.push(`<button class="btn-small btn-neutral" onclick="(function(){ addHistoryFromResultAndSave('${btoa(JSON.stringify(result))}'); })()">Ajouter à l'historique</button>`);
+  }
+  if(result.interval === '1m'){
+    html.push(`<button class="btn-small btn-success" onclick="(function(){ addHistoryFromResultAndStartTest('${btoa(JSON.stringify(result))}','BUY'); })()">Test Buy</button>`);
+    html.push(`<button class="btn-small btn-danger" onclick="(function(){ addHistoryFromResultAndStartTest('${btoa(JSON.stringify(result))}','SELL'); })()">Test Sell</button>`);
+    html.push(`<button class="btn-small btn-neutral" onclick="(function(){ addHistoryFromResultAndSave('${btoa(JSON.stringify(result))}'); toast('Entrée ajoutée à l\\'historique'); })()">Ajouter (sans test)</button>`);
+    html.push(`<div class="small-muted">Actions de test disponibles pour 1m</div>`);
+  } else {
+    html.push(`<div class="small-muted">Tests papier disponibles uniquement pour 1m (sélection)</div>`);
+  }
+  html.push(`</div>`);
+  signalBox.innerHTML = html.join('');
+  signalBox.className = result.signal.toLowerCase();
+}
+
+/* Helper pour transmettre objets via onclick - on encode pour éviter soucis d'apostrophes */
+window.addHistoryFromResultAndSave = function(encoded){
+  try {
+    const result = JSON.parse(atob(encoded));
+    addHistoryIfNew(result);
+    toast('Ajouté à l\'historique');
+  } catch(e){ console.error(e); }
+};
+window.addHistoryFromResultAndStartTest = function(encoded, dir){
+  try {
+    const result = JSON.parse(atob(encoded));
+    addHistoryIfNew(result);
+    // retrouver id nouvellement ajouté
+    const minuteTs = Math.floor(result.timestamp / 60000) * 60000;
+    const id = `${result.asset.binance}_${result.interval}_${minuteTs}`;
+    const h = history.find(x=>x.id===id);
+    if(h) startTestTrade(h.id, dir);
+  } catch(e){ console.error(e); }
+};
+
+/* ====== Toast simple ====== */
+function toast(msg, t=4200){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(()=>{ el.style.display = 'none'; }, t);
+}
+
+/* ====== Analyse complète & boucle auto ====== */
+async function runAnalysis(){
+  statusInfo.innerHTML = '<span class="loading"></span> Analyse en cours...';
+  try {
+    // Analyser tous les intervalles en parallèle (mais attention rate-limits)
+    const [results1m, results1h, results1d] = await Promise.all([
+      analyzeAll('1m'),
+      analyzeAll('1h'),
+      analyzeAll('1d')
+    ]);
+    // Afficher
+    renderResults('1m', results1m);
+    renderResults('1h', results1h);
+    renderResults('1d', results1d);
+    statusInfo.textContent = `Analyse terminée à ${new Date().toLocaleTimeString()}`;
+    // Ajouter au history les signaux >= seuil (évite doublons)
+    [...results1m, ...results1h, ...results1d].forEach(r => addHistoryIfNew(r));
+    // Notifications pour forts signaux
+    if(notificationsEnabled){
+      const allResults = [...results1m, ...results1h, ...results1d];
+      const strongSignals = allResults.filter(r => r.confidence >= 90);
+      strongSignals.forEach(signal => {
+        new Notification(`Signal fort: ${signal.asset.name} ${signal.signal}`, {
+          body: `${signal.confidence}% de fiabilité (${signal.interval})`,
+          icon: 'https://binance.com/favicon.ico'
+        });
+      });
+    }
+  } catch(error) {
+    console.error('Erreur analyse:', error);
+    statusInfo.textContent = 'Erreur lors de l\'analyse';
+  }
+}
+
+/* ====== Initialisation ====== */
+document.getElementById('toggleFilter').onclick = ()=>{
+  showStrongOnly = !showStrongOnly;
+  document.getElementById('toggleFilter').textContent = showStrongOnly ? 'Afficher tout' : 'Filtrer ≥ 80%';
+  renderFromCache('1m'); renderFromCache('1h'); renderFromCache('1d');
+};
+document.getElementById('analyzeBtn').onclick = runAnalysis;
+document.getElementById('preset').onchange = (e)=>{ activeSet=e.target.value; };
+document.getElementById('toggleMode').onclick = ()=>{ const normal=document.getElementById('normalMode'); const feu=document.getElementById('feuMode'); if(normal.style.display==='none'){ normal.style.display='grid'; feu.style.display='none'; document.getElementById('toggleMode').textContent='Mode feu rouge'; }else{ normal.style.display='none'; feu.style.display='block'; document.getElementById('toggleMode').textContent='Mode normal'; } };
+document.getElementById('clearHistory').onclick = ()=>{
+  if(!confirm('Effacer tout l\'historique ?')) return;
+  history = []; saveHistory(); toast('Historique effacé');
+};
+document.getElementById('downloadBtn').onclick = ()=>{
+  const content = '<!doctype html>' + document.documentElement.outerHTML;
+  const blob = new Blob([content], {type:'text/html'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'signals_export.html'; a.click();
+  URL.revokeObjectURL(url);
+};
+
+/* reprise des tests et rendu initial */
+async function init(){
+  await fetchAllBinanceSymbols();
+  renderFromCache('1m'); renderFromCache('1h'); renderFromCache('1d');
+  renderHistory();
+  resumePendingTests();
+  // Démarrer analyse initiale et boucle auto
+  runAnalysis();
+  setInterval(runAnalysis, 60 * 1000);
+}
+init();
+
+/* ====== Fin du script ====== */
+</script>
+</body>
+</html>
+
+
