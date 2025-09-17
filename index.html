@@ -970,6 +970,133 @@ renderHistory = function(){ currentPage = 0; renderHistoryPage(currentPage); upd
 
 /* ====== Fin du script ====== */
 </script>
+
+<section>
+  <h2>Backtest SL/TP</h2>
+  <label>Paire:</label><input id="pairInput" value="BTCUSDT">
+  <label>Intervalle:</label><select id="intervalInput">
+    <option value="1h">1h</option>
+    <option value="1d">1d</option>
+  </select>
+  <label>Années:</label><input id="yearsInput" type="number" value="2">
+  <button onclick="runBacktest()">Lancer Backtest SL/TP</button>
+
+  <table id="backtestTable">
+    <thead><tr><th>Trade #</th><th>Entrée</th><th>SL</th><th>TP</th><th>Sortie</th><th>Verdict</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
 </body>
+
+
+
+
+<script>
+// ==== Helpers EMA, ATR ====
+function ema(values, period) {
+  let k = 2/(period+1);
+  let emaArray = [];
+  let prevEma = values[0];
+  emaArray.push(prevEma);
+  for(let i=1;i<values.length;i++){
+    let emaVal = values[i]*k + prevEma*(1-k);
+    emaArray.push(emaVal);
+    prevEma = emaVal;
+  }
+  return emaArray;
+}
+function atr(high, low, close, period=14){
+  let trs=[];
+  for(let i=1;i<close.length;i++){
+    const tr=Math.max(high[i]-low[i], Math.abs(high[i]-close[i-1]), Math.abs(low[i]-close[i-1]));
+    trs.push(tr);
+  }
+  let res=[];
+  for(let i=0;i<trs.length;i++){
+    if(i+1>=period){
+      const slice=trs.slice(i+1-period,i+1);
+      res.push(slice.reduce((a,b)=>a+b,0)/period);
+    }else res.push(null);
+  }
+  return res;
+}
+
+// ==== Backtest amélioré ====
+async function runBacktest(){
+  const symbol=document.getElementById("pairInput").value;
+  const interval=document.getElementById("intervalInput").value;
+  const years=parseInt(document.getElementById("yearsInput").value);
+  const rr=2.0; // ratio Risk/Reward
+  const since=Date.now()-years*365*24*3600*1000;
+  let kl=[]; let end=null;
+  while(true){
+    let url=`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=1000`;
+    if(end) url+=`&endTime=${end}`;
+    const r=await fetch(url); const j=await r.json();
+    if(!j.length) break;
+    kl=j.concat(kl);
+    end=j[0][0]-1;
+    if(kl[0][0]<=since) break;
+  }
+  const close=kl.map(k=>+k[4]), high=kl.map(k=>+k[2]), low=kl.map(k=>+k[3]);
+  const ema200=ema(close,200);
+  const atrVals=atr(high,low,close,14);
+  const mode=document.getElementById("slTpMode").value;
+  const slPct=parseFloat(document.getElementById("slInput").value)/100;
+  const tpPct=parseFloat(document.getElementById("tpInput").value)/100;
+  let trades=[]; let balance=0; let peak=0; let dd=0;
+  for(let i=200;i<close.length-1;i+=20){ 
+    const price=close[i];
+    // Tendance filtre EMA200
+    let signal=null;
+    if(price>ema200[i]) signal="BUY";
+    else if(price<ema200[i]) signal="SELL";
+    if(!signal) continue;
+    let sl,tp;
+    if(mode==="manual"){
+      if(signal==="BUY"){ sl=price*(1-slPct); tp=price*(1+tpPct); }
+      else { sl=price*(1+slPct); tp=price*(1-tpPct); }
+    }else{
+      const a=atrVals[i]; if(!a) continue;
+      if(signal==="BUY"){ sl=price-a; tp=price+a*rr; }
+      else { sl=price+a; tp=price-a*rr; }
+    }
+    let exit=null,verdict="LOSS";
+    for(let j=i+1;j<close.length;j++){
+      if(signal==="BUY"){
+        if(low[j]<=sl){ exit=sl; verdict="LOSS (SL)"; break; }
+        if(high[j]>=tp){ exit=tp; verdict="WIN (TP)"; break; }
+      }else{
+        if(high[j]>=sl){ exit=sl; verdict="LOSS (SL)"; break; }
+        if(low[j]<=tp){ exit=tp; verdict="WIN (TP)"; break; }
+      }
+    }
+    if(exit){
+      const pnl=((exit-price)/price*100)*(signal==="BUY"?1:-1);
+      balance+=pnl;
+      peak=Math.max(peak,balance);
+      dd=Math.max(dd,peak-balance);
+      trades.push({signal,entry:price,sl,tp,exit,verdict,pnl});
+    }
+  }
+  const tb=document.querySelector("#backtestTable tbody");
+  tb.innerHTML="";
+  trades.forEach((t,i)=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${i+1}</td><td>${t.entry.toFixed(2)}</td><td>${t.sl.toFixed(2)}</td><td>${t.tp.toFixed(2)}</td><td>${t.exit.toFixed(2)}</td><td class='${t.verdict.includes("WIN")?"win":"loss"}'>${t.verdict} (${t.pnl.toFixed(2)}%)</td>`;
+    tb.appendChild(tr);
+  });
+  // Stats avancées
+  const wins=trades.filter(t=>t.verdict.includes("WIN")).length;
+  const winrate=(wins/trades.length*100).toFixed(2);
+  const avg= (trades.reduce((a,b)=>a+b.pnl,0)/trades.length).toFixed(2);
+  const stats=`Winrate: ${winrate}% | Avg PnL: ${avg}% | Max DD: ${dd.toFixed(2)}% | Trades: ${trades.length}`;
+  let statsDiv=document.getElementById("btStats");
+  if(!statsDiv){ statsDiv=document.createElement("div"); statsDiv.id="btStats"; document.querySelector("#backtestTable").insertAdjacentElement("afterend",statsDiv); }
+  statsDiv.innerHTML="<b>Résultats Backtest:</b> "+stats;
+}
+</script>
+
 </html>
 
